@@ -1,7 +1,6 @@
 #include "palette.h"
 
 #include <lcms2.h>
-#include <string.h>
 
 static const cmsCIELab const palette[16] = {
 	{ .L = 20, .a = -12, .b = -12 }, /* 0 - base03 */
@@ -26,28 +25,14 @@ static const cmsCIELab *get_palette(void) {
 	return palette;
 }
 
-static void code(char *buf, uint32_t fg, uint32_t bg) {
-	if (fg >= 16 || bg >= 16) {
-		buf[0] = '\0';
-		return;
-	}
-	if (fg >= 8) fg += (60 - 8);
-	fg += 30;
-	if (bg >= 8) bg += (60 - 8);
-	bg += 40;
-	sprintf(buf, "\e[%u;%um", fg, bg);
-}
-
-static void reset(char *buf) {
-	strcpy(buf, "\e[39;49m");
-}
-
 struct palette palette_solarized = {
 	.name = "solarized",
-	.palette = get_palette,
-	.count = 16,
+	.fg_count = 16,
+	.bg_count = 16,
+	.fg_palette = get_palette,
+	.bg_palette = get_palette,
 	.escape_len = 10,
-	.code = code,
-	.reset = reset
+	.code = palette_code_16color,
+	.reset = palette_reset
 };
 

@@ -2,7 +2,6 @@
 
 #include <lcms2.h>
 #include <stdlib.h>
-#include <string.h>
 
 /* The points used on the color cube */
 #define COLOR_COUNT 6
@@ -24,9 +23,6 @@ static const uint8_t const grey[GREY_COUNT] = {
 
 /* Convert from palette index to xterm color number */
 #define TO_XTERM(i) ((i) + 16)
-
-/* The maximum length of the escape string used to set a color (including \0) */
-#define ESCAPE_LEN 24 
 
 static const cmsCIELab *palette = NULL;
 
@@ -76,22 +72,16 @@ static const cmsCIELab *get_palette(void) {
 }
 
 void code(char *buf, uint32_t fg, uint32_t bg) {
-	if (fg >= COUNT || bg >= COUNT) {
-		buf[0] = '\0';
-		return;
-	}
-	sprintf(buf, "\e[38;5;%um\e[48;5;%um", TO_XTERM(fg), TO_XTERM(bg));
-}
-
-void reset(char *buf) {
-	strcpy(buf, "\e[0m");
+	palette_code_extended(TO_XTERM(COUNT), buf, TO_XTERM(fg), TO_XTERM(bg));
 }
 
 struct palette palette_256color = {
 	.name = "256color",
-	.palette = get_palette,
-	.count = COUNT,
-	.escape_len = ESCAPE_LEN,
+	.fg_count = COUNT,
+	.bg_count = COUNT,
+	.fg_palette = get_palette,
+	.bg_palette = get_palette,
+	.escape_len = PALETTE_CODE_EXTENDED_LEN,
 	.code = code,
-	.reset = reset
+	.reset = palette_reset
 };
