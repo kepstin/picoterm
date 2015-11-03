@@ -27,51 +27,34 @@ static const uint8_t const grey[GREY_COUNT] = {
 static const cmsCIELab *palette = NULL;
 
 static const cmsCIELab *get_palette(void) {
-	if (palette != NULL) {
-		return palette;
-	}
-
-	/* Generate the sRGB palette */
-	uint8_t *sRGB = malloc(COUNT * 3 * sizeof(uint8_t));
-	unsigned i = 0;
-	for (unsigned r = 0; r < COLOR_COUNT; r++) {
-		for (unsigned g = 0; g < COLOR_COUNT; g++) {
-			for (unsigned b = 0; b < COLOR_COUNT; b++) {
-				sRGB[i++] = color[r];
-				sRGB[i++] = color[g];
-				sRGB[i++] = color[b];
+	if (palette == NULL) {
+		/* Generate the sRGB palette */
+		uint8_t *sRGB = malloc(COUNT * 3 * sizeof(uint8_t));
+		unsigned i = 0;
+		for (unsigned r = 0; r < COLOR_COUNT; r++) {
+			for (unsigned g = 0; g < COLOR_COUNT; g++) {
+				for (unsigned b = 0; b < COLOR_COUNT; b++) {
+					sRGB[i++] = color[r];
+					sRGB[i++] = color[g];
+					sRGB[i++] = color[b];
+				}
 			}
 		}
+		for (unsigned k = 0; k < GREY_COUNT; k++) {
+			sRGB[i++] = grey[k]; /* r */
+			sRGB[i++] = grey[k]; /* g */
+			sRGB[i++] = grey[k]; /* b */
+		}
+
+		palette = palette_convert_srgb_lab(sRGB, COUNT);
+
+		free(sRGB);
 	}
-	for (unsigned k = 0; k < GREY_COUNT; k++) {
-		sRGB[i++] = grey[k]; /* r */
-		sRGB[i++] = grey[k]; /* g */
-		sRGB[i++] = grey[k]; /* b */
-	}
 
-	/* Convert the palette to CIELab */
-	cmsCIELab *Lab = malloc(COUNT * sizeof(cmsCIELab));
-
-	cmsHPROFILE hsRGB = cmsCreate_sRGBProfile();
-	cmsHPROFILE hLab = cmsCreateLab4Profile(cmsD50_xyY());
-	cmsHTRANSFORM trans = cmsCreateTransform(hsRGB, TYPE_RGB_8,
-			hLab, TYPE_Lab_DBL,
-			INTENT_PERCEPTUAL, 0);
-	cmsCloseProfile(hsRGB);
-	cmsCloseProfile(hLab);
-
-	cmsDoTransform(trans, sRGB, Lab, COUNT);
-
-	cmsDeleteTransform(trans);
-
-	free(sRGB);
-
-	palette = Lab;
-
-	return Lab;
+	return palette;
 }
 
-void code(char *buf, uint32_t fg, uint32_t bg) {
+void code(char *buf, uint16_t fg, uint16_t bg) {
 	palette_code_extended(TO_XTERM(COUNT), buf, TO_XTERM(fg), TO_XTERM(bg));
 }
 

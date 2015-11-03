@@ -17,9 +17,11 @@ all: picoterm
 
 palette.o: palette.c palette.h
 palette_256color.o: palette_256color.c palette.h
+palette_rxvt.o: palette_rxvt.c palette.h
 palette_solarized.o: palette_solarized.c palette.h
+palette_tango.o: palette_tango.c palette.h
 palette_vga.o: palette_vga.c palette.h
 picoterm.o: picoterm.c palette.h
-picoterm: palette.o palette_256color.o palette_solarized.o palette_vga.o \
-		picoterm.o
+picoterm: palette.o palette_256color.o palette_rxvt.o palette_solarized.o \
+		palette_tango.o palette_vga.o picoterm.o
 

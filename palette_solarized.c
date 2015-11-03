@@ -2,7 +2,9 @@
 
 #include <lcms2.h>
 
-static const cmsCIELab const palette[16] = {
+#define COUNT 16
+
+static const cmsCIELab const old_palette[COUNT] = {
 	{ .L = 20, .a = -12, .b = -12 }, /* 0 - base03 */
 	{ .L = 50, .a =  65, .b =  45 }, /* 1 - red */
 	{ .L = 60, .a = -20, .b =  65 }, /* 2 - green */
@@ -21,17 +23,41 @@ static const cmsCIELab const palette[16] = {
 	{ .L = 97, .a =  0,  .b =  10 }, /* 15 - base3 */
 };
 
+static const uint8_t const srgb_palette[COUNT * 3] = {
+	0x07, 0x36, 0x42,
+	0xdc, 0x32, 0x2f,
+	0x85, 0x99, 0x00,
+	0xb5, 0x89, 0x00,
+	0x26, 0x8b, 0xd2,
+	0xd3, 0x36, 0x82,
+	0x2a, 0xa1, 0x98,
+	0xee, 0xe8, 0xd5,
+	0x00, 0x2b, 0x36,
+	0xcb, 0x4b, 0x16,
+	0x58, 0x6e, 0x75,
+	0x65, 0x7b, 0x83,
+	0x83, 0x94, 0x96,
+	0x6c, 0x71, 0xc4,
+	0x93, 0xa1, 0xa1,
+	0xfd, 0xf6, 0xe3
+};
+
+static const cmsCIELab *palette = NULL;
+
 static const cmsCIELab *get_palette(void) {
+	if (palette == NULL) {
+		palette = palette_convert_srgb_lab(srgb_palette, COUNT);
+	}
 	return palette;
 }
 
 struct palette palette_solarized = {
 	.name = "solarized",
-	.fg_count = 16,
-	.bg_count = 16,
+	.fg_count = COUNT,
+	.bg_count = COUNT,
 	.fg_palette = get_palette,
 	.bg_palette = get_palette,
-	.escape_len = 10,
+	.escape_len = PALETTE_CODE_16COLOR_LEN,
 	.code = palette_code_16color,
 	.reset = palette_reset
 };
