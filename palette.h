@@ -16,6 +16,7 @@ struct palette {
 };
 
 extern struct palette palette_256color;
+extern struct palette palette_linux; /* vga with bold/blink */
 extern struct palette palette_rxvt;
 extern struct palette palette_solarized;
 extern struct palette palette_tango;
@@ -27,10 +28,11 @@ extern struct palette palette_vga8;
 /* Convert a palette from 8 bit per component R, G, B to CIELab */
 const cmsCIELab *palette_convert_srgb_lab(const uint8_t *in, uint16_t entries);
 
-/* For terminals that support 16 colors, but need 'intense' to select top
- * 8 foreground colors (and can't do 16 background colors) */
-#define PALETTE_CODE_16COLOR_BOLD_LEN 11
-void palette_code_16color_bold(char *buf, uint16_t fg, uint16_t bg);
+/* For terminals that support 16 colors, but select the bright fg colors with
+ * bold, and bright background colors with blink.
+ */
+#define PALETTE_CODE_16COLOR_BOLD_BLINK_LEN 15
+void palette_code_16color_bold_blink(char *buf, uint16_t fg, uint16_t bg);
 
 /* For terminals that support addressing 16 colors independent of bold */
 #define PALETTE_CODE_16COLOR_LEN 10

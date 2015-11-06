@@ -22,29 +22,29 @@ const cmsCIELab *palette_convert_srgb_lab(const uint8_t *in, uint16_t entries) {
 	return out;
 }
 
-void palette_code_16color_bold(char *buf, uint16_t fg, uint16_t bg) {
-	bool bold = false;
+void palette_code_16color_bold_blink(char *buf, uint16_t fg, uint16_t bg) {
+	const char *bold = "22;";
+	const char *blink = "25;";
 
 	if (fg >= 16) {
 		fg = 39;
 	} else if (fg >= 8) {
-		bold = true;
+		bold = "1;";
 		fg = 30 + (fg - 8);
 	} else {
 		fg = 30 + fg;
 	}
 
-	if (bg >= 8) {
+	if (bg >= 16) {
 		bg = 49;
+	} else if (bg >= 8) {
+		blink = "5;";
+		bg = 40 + (bg - 8);
 	} else {
 		bg = 40 + bg;
 	}
 
-	if (bold) {
-		sprintf(buf, "\e[1;%u;%um", fg, bg);
-	} else {
-		sprintf(buf, "\e[%u;%um", fg, bg);
-	}
+	sprintf(buf, "\e[%s%s%u;%um", bold, blink, fg, bg);
 }
 
 void palette_code_16color(char *buf, uint16_t fg, uint16_t bg) {

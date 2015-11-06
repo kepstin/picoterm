@@ -158,7 +158,7 @@ static void print_image_truecolor(const char *filename) {
 }
 
 int main(int argc, char *argv[]) {
-	struct palette *palette = &palette_tango;
+	struct palette *palette = &palette_linux;
 
 	uint32_t fg_count = palette->fg_count;
 	const cmsCIELab *fg_palette = palette->fg_palette();

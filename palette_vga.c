@@ -46,11 +46,22 @@ struct palette palette_vga = {
 struct palette palette_vga8 = {
 	.name = "vga8",
 	.fg_count = COUNT,
-	.bg_count = COUNT / 2,
+	.bg_count = COUNT/2,
 	.fg_palette = get_palette,
 	.bg_palette = get_palette,
-	.escape_len = PALETTE_CODE_16COLOR_BOLD_LEN,
-	.code = palette_code_16color_bold,
+	.escape_len = PALETTE_CODE_16COLOR_BOLD_BLINK_LEN,
+	.code = palette_code_16color_bold_blink,
+	.reset = palette_reset
+};
+
+struct palette palette_linux = {
+	.name = "linux",
+	.fg_count = COUNT,
+	.bg_count = COUNT,
+	.fg_palette = get_palette,
+	.bg_palette = get_palette,
+	.escape_len = PALETTE_CODE_16COLOR_BOLD_BLINK_LEN,
+	.code = palette_code_16color_bold_blink,
 	.reset = palette_reset
 };
 
