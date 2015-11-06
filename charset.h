@@ -13,6 +13,10 @@ enum charset_flags {
 	CHARSET_UTF8_EXTENDED = (1 << 1)
 };
 
+const struct glyph **charset(size_t *count, enum charset_flags flags);
+const char *charset_enter(void);
+const char *charset_exit(void);
+
 const struct glyph **charset_acs(size_t *count, enum charset_flags flags);
 const struct glyph **charset_utf8(size_t *count, enum charset_flags flags);
 

@@ -1,4 +1,5 @@
 #include "charset.h"
+#include "driver.h"
 
 #include <curses.h>
 #include <term.h>
