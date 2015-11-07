@@ -45,6 +45,7 @@ struct charset *charset_get_acs(enum charset_flags flags) {
 			}
 		}
 	}
+
 	struct charset *charset = malloc(sizeof(struct charset));
 
 	charset->name = "acs";
@@ -55,7 +56,7 @@ struct charset *charset_get_acs(enum charset_flags flags) {
 		charset->description =
 			N_("ANSI Alternate Character Set");
 	}
-	
+
 
 	const struct glyph **glyph = malloc(count * sizeof(struct glyph *));
 	count = 0;

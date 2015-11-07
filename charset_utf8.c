@@ -4,6 +4,8 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include <glib/gi18n.h>
+
 /* U+0020 SPACE - full character box of background color */
 static const struct glyph utf8_space = {
 	.code = "\x20",
@@ -148,7 +150,7 @@ static const struct glyph const *utf8_set_extended_inv[] = {
 	(sizeof(utf8_set_extended_inv) / sizeof(struct glyph *))
 
 /* Build and return a charset */
-const struct glyph **charset_utf8(size_t *countp, enum charset_flags flags) {
+struct charset *charset_get_utf8(enum charset_flags flags) {
 	size_t count = 0;
 
 	count += UTF8_SET_BASIC_LEN;
@@ -161,30 +163,53 @@ const struct glyph **charset_utf8(size_t *countp, enum charset_flags flags) {
 			count += UTF8_SET_EXTENDED_INV_LEN;
 	}
 
-	const struct glyph **charset = malloc(count * sizeof(struct glyph *));
+	struct charset *charset = malloc(sizeof(struct charset));
+
+	charset->name = "utf8";
+	if (flags & CHARSET_UTF8_EXTENDED) {
+		if (flags & CHARSET_INVERSE) {
+			charset->description =
+				N_("Extended UTF-8 block elements with inverse");
+		} else {
+			charset->description =
+				N_("Extended UTF-8 block elements");
+		}
+	} else {
+		if (flags & CHARSET_INVERSE) {
+			charset->description =
+				N_("UTF-8 block elements with inverse");
+		} else {
+			charset->description =
+				N_("UTF-8 block elements");
+		}
+	}
+
+	const struct glyph **glyph = malloc(count * sizeof(struct glyph *));
 
 	count = 0;
 
-	memcpy(&charset[count], utf8_set_basic,
+	memcpy(&glyph[count], utf8_set_basic,
 		sizeof(utf8_set_basic));
 	count += UTF8_SET_BASIC_LEN;
 	if (flags & CHARSET_INVERSE) {
-		memcpy(&charset[count], utf8_set_basic_inv,
+		memcpy(&glyph[count], utf8_set_basic_inv,
 			sizeof(utf8_set_basic_inv));
 		count += UTF8_SET_BASIC_INV_LEN;
 	}
 
 	if (flags & CHARSET_UTF8_EXTENDED) {
-		memcpy(&charset[count], utf8_set_extended,
+		memcpy(&glyph[count], utf8_set_extended,
 			sizeof(utf8_set_extended));
 		count += UTF8_SET_EXTENDED_LEN;
 		if (flags & CHARSET_INVERSE) {
-			memcpy(&charset[count], utf8_set_extended_inv,
+			memcpy(&glyph[count], utf8_set_extended_inv,
 				sizeof(utf8_set_extended_inv));
 			count += UTF8_SET_EXTENDED_INV_LEN;
 		}
 	}
 
-	*countp = count;
+	charset->num_glyphs = count;
+	charset->glyph = glyph;
+
 	return charset;
 }
