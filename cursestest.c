@@ -16,7 +16,7 @@
 
 /* TODO: man tparm */
 
-void main(void) {
+int main(void) {
 	setlocale(LC_ALL, "");
 	textdomain(GETTEXT_PACKAGE);
 
@@ -63,25 +63,29 @@ void main(void) {
 	printf("Testing semigraphics abilities:\n");
 	if (have_utf8) {
 		printf("UTF-8\n");
-		size_t chars = 0;
-		const struct glyph **charset = charset_utf8(&chars,
+		struct charset *charset = charset_get_utf8(
 			CHARSET_INVERSE|CHARSET_UTF8_EXTENDED);
+		size_t chars = 0;
+		const struct glyph **glyph = charset_get_glyphs(charset, &chars);
+		putp(charset_get_enter_string(charset));
 		for (size_t i = 0; i < chars; i++)
-			printf("%s", charset[i]->code);
-		putp(exit_attribute_mode);
-		printf("\n");
-		free(charset);
+			fputs(glyph[i]->code, stdout);
+		putp(charset_get_exit_string(charset));
+		putc('\n', stdout);
+		charset_free(charset);
 	}
 	if (enter_alt_charset_mode) {
 		printf("Alternate character set:\n");
-		size_t chars = 0;
-		const struct glyph **charset = charset_acs(&chars,
+		struct charset *charset = charset_get_acs(
 			CHARSET_INVERSE);
-		putp(enter_alt_charset_mode);
+		size_t chars = 0;
+		const struct glyph **glyph = charset_get_glyphs(charset, &chars);
+		putp(charset_get_enter_string(charset));
 		for (size_t i = 0; i < chars; i++)
-			printf("%s", charset[i]->code);
-		putp(exit_alt_charset_mode);
-		printf("\n");
-		free(charset);
+			fputs(glyph[i]->code, stdout);
+		putp(charset_get_exit_string(charset));
+		putc('\n', stdout);
+		charset_free(charset);
 	}
+	return 0;
 }

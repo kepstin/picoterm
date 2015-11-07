@@ -1,4 +1,5 @@
 #include "charset.h"
+#include "charset_internal.h"
 
 #include <stdlib.h>
 #include <string.h>

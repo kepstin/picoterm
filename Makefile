@@ -1,10 +1,12 @@
 .PHONY: default
 default: all
 
+#PKG_CONFIG=pkg-config
+
 CFLAGS=-O2 -ggdb
 
-M_CFLAGS=-std=c11 -Wall $(shell pkg-config --cflags glib-2.0)
-M_LDFLAGS=-llcms2 -lcurses $(shell pkg-config --libs glib-2.0)
+M_CFLAGS=-std=c11 -Wall $(shell $(PKG_CONFIG) --cflags glib-2.0)
+M_LDFLAGS=-llcms2 -lcurses $(shell $(PKG_CONFIG) --libs glib-2.0)
 
 .c.o:
 	$(CC) $(CFLAGS) $(M_CFLAGS) -c $< -o $@
@@ -18,8 +20,9 @@ cursestest:
 .PHONY: all
 all: picoterm cursestest
 
-charset_acs.o: charset_acs.c charset.h
-charset_utf8.o: charset_utf8.c charset.h
+charset.o: charset.c charset.h charset_internal.h
+charset_acs.o: charset_acs.c charset.h charset_internal.h
+charset_utf8.o: charset_utf8.c charset.h charset_internal.h
 driver.o: driver.c driver.h driver_internal.h
 driver_rgb.o: driver_rgb.c driver.h driver_internal.h
 cursestest.o: cursestest.c charset.h driver.h
@@ -33,5 +36,7 @@ picoterm.o: picoterm.c palette.h
 picoterm: palette.o palette_256color.o palette_rxvt.o palette_solarized.o \
 		palette_tango.o palette_vga.o picoterm.o
 
-cursestest: cursestest.o charset_acs.o charset_utf8.o driver.o driver_rgb.o
+cursestest: cursestest.o \
+	charset.o charset_acs.o charset_utf8.o \
+	driver.o driver_rgb.o
 
