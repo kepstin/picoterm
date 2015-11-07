@@ -11,18 +11,22 @@
 #include <stdlib.h>
 #include <string.h>
 
+#define GETTEXT_PACKAGE "picoterm"
+#include <glib/gi18n.h>
+
 /* TODO: man tparm */
 
 void main(void) {
-	char *locale = setlocale(LC_ALL, "");
+	setlocale(LC_ALL, "");
+	textdomain(GETTEXT_PACKAGE);
+
+	const struct driver *driver = driver_get_default();
+
+	driver_test(driver);
+
 	char *codeset = nl_langinfo(CODESET);
 	bool have_utf8 = true;
 	if (strcmp(codeset, "UTF-8") != 0) {
-		printf("Your locale codeset isn't UTF-8 (it's %s instead).\n",
-			codeset);
-		printf("This will result in reduced quality from limited available characters.\n");
-		printf("Try changing your locale (it's currently %s).\n",
-			locale);
 		have_utf8 = false;
 	}
 

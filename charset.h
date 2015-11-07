@@ -3,6 +3,8 @@
 
 #include <stddef.h>
 
+struct charset;
+
 struct glyph {
 	const char *code;
 	float weights[2][2];
@@ -13,11 +15,12 @@ enum charset_flags {
 	CHARSET_UTF8_EXTENDED = (1 << 1)
 };
 
-const struct glyph **charset(size_t *count, enum charset_flags flags);
-const char *charset_enter(void);
-const char *charset_exit(void);
+const struct glyph **charset_get_glyphs(size_t *count, enum charset_flags flags);
+const char *charset_get_enter_string(void);
+const char *charset_get_exit_string(void);
 
-const struct glyph **charset_acs(size_t *count, enum charset_flags flags);
-const struct glyph **charset_utf8(size_t *count, enum charset_flags flags);
+struct charset *charset_get_default(enum charset_flags flags);
+struct charset *charset_get_acs(enum charset_flags flags);
+struct charset *charset_get_utf8(enum charset_flags flags);
 
 #endif
