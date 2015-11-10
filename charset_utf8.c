@@ -102,85 +102,147 @@ static const struct glyph utf8_quadrant_ur_ll_lr = {
 	.weights = { { 0.00, 1.00 }, { 1.00, 1.00 } }
 };
 
-/* The set of UTF-8 characters with maximum compatibility.
- * These characters are all required in WGL-4, so they're common in fonts. */
-static const struct glyph const *utf8_set_basic[] = {
-	&utf8_space,
-	&utf8_medium_shade,
+/* Full block characters in the basic (WGL-4) set. */
+static const struct glyph const *utf8_set_full[] = {
+	&utf8_space
+};
+#define UTF8_SET_FULL_LEN \
+	(sizeof(utf8_set_full) / sizeof(struct glyph *))
+
+/* Inverse block characters in the basic (WGL-4) set.
+ * Includes some codes that are listed as optional. */
+static const struct glyph const *utf8_set_full_inv[] = {
+	&utf8_full_block
+};
+#define UTF8_SET_FULL_INV_LEN \
+	(sizeof(utf8_set_full_inv) / sizeof(struct glyph *))
+
+/* Full block shade characters in the basic (WGL-4) set. */
+static const struct glyph const *utf8_set_shade[] = {
 	&utf8_dark_shade,
-	&utf8_lower_half_block,
-	&utf8_left_half_block
+	&utf8_medium_shade
 };
-#define UTF8_SET_BASIC_LEN \
-	(sizeof(utf8_set_basic) / sizeof(struct glyph *))
+#define UTF8_SET_SHADE_LEN \
+	(sizeof(utf8_set_shade) / sizeof(struct glyph *))
 
-/* Additional UTF-8 maximum compatibility characters for terminals
- * where the colors available for fg vs bg are different.
- * Includes some codes that are optional in WGL-4. */
-static const struct glyph const *utf8_set_basic_inv[] = {
-	&utf8_full_block,
-	&utf8_light_shade,
-	&utf8_upper_half_block,
-	&utf8_right_half_block
+/* Inverse full block shade characters in the basic (WGL-4) set.
+ * Includes some codes that are listed as optional. */
+static const struct glyph const *utf8_set_shade_inv[] = {
+	&utf8_light_shade
 };
-#define UTF8_SET_BASIC_INV_LEN \
-	(sizeof(utf8_set_basic_inv) / sizeof(struct glyph *))
+#define UTF8_SET_SHADE_INV_LEN \
+	(sizeof(utf8_set_shade_inv) / sizeof(struct glyph *))
 
-/* Additional UTF-8 characters for quadrant addressing.
- * Not in all fonts, so their usage is optional */
-static const struct glyph const *utf8_set_extended[] = {
+/* Half block characters in the basic (WGL-4) set. */
+static const struct glyph const *utf8_set_half[] = {
+	&utf8_lower_half_block
+};
+#define UTF8_SET_HALF_LEN \
+	(sizeof(utf8_set_half) / sizeof(struct glyph *))
+
+/* Inverse half block characters in the basic (WGL-4) set.
+ * Includes some codes that are listed as optional. */
+static const struct glyph const *utf8_set_half_inv[] = {
+	&utf8_upper_half_block
+};
+#define UTF8_SET_HALF_INV_LEN \
+	(sizeof(utf8_set_half_inv) / sizeof(struct glyph *))
+
+/* Quarter block characters.
+ * Not enabled by default, since they're often missing from fonts. */
+static const struct glyph const *utf8_set_quarter[] = {
+	&utf8_left_half_block,
 	&utf8_quadrant_ul,
 	&utf8_quadrant_ur,
 	&utf8_quadrant_ll,
 	&utf8_quadrant_lr,
 	&utf8_quadrant_ul_lr
 };
-#define UTF8_SET_EXTENDED_LEN \
-	(sizeof(utf8_set_extended) / sizeof(struct glyph *))
+#define UTF8_SET_QUARTER_LEN \
+	(sizeof(utf8_set_quarter) / sizeof(struct glyph *))
 
-/* Inverse versions of the quadrant addressing characters. */
-static const struct glyph const *utf8_set_extended_inv[] = {
+/* Inverse versions of the quarter block characters. */
+static const struct glyph const *utf8_set_quarter_inv[] = {
+	&utf8_right_half_block,
 	&utf8_quadrant_ur_ll_lr,
 	&utf8_quadrant_ul_ll_lr,
 	&utf8_quadrant_ul_ur_lr,
 	&utf8_quadrant_ul_ur_ll,
 	&utf8_quadrant_ur_ll
 };
-#define UTF8_SET_EXTENDED_INV_LEN \
-	(sizeof(utf8_set_extended_inv) / sizeof(struct glyph *))
+#define UTF8_SET_QUARTER_INV_LEN \
+	(sizeof(utf8_set_quarter_inv) / sizeof(struct glyph *))
 
 /* Build and return a charset */
 struct charset *charset_get_utf8(enum charset_flags flags) {
-	size_t count = 0;
+	gboolean utf8 = g_get_charset(NULL);
 
-	count += UTF8_SET_BASIC_LEN;
+	if (!utf8 && !(flags & CHARSET_FORCE)) {
+		/* Terminal doesn't support UTF-8, bail out. */
+		return NULL;
+	}
+
+	/* Apply environment quirks */
+	// TODO: handle user-passed options
+
+	if (g_getenv("VTE_VERSION") != NULL) {
+		/* vte doesn't use fonts for quadrant characters, but actually
+		 * draws them internally. We can always enable the extended
+		 * charset here. */
+		flags |= CHARSET_UTF8_EXTENDED;
+	}
+
+	/* Determine the number of glyphs to be included, and the feature
+	 * flags we support. */
+	size_t count = 0;
+	enum charset_flags enabled_flags = flags & CHARSET_INVERSE;
+
+	count += UTF8_SET_FULL_LEN;
 	if (flags & CHARSET_INVERSE)
-		count += UTF8_SET_BASIC_INV_LEN;
-	
-	if (flags & CHARSET_UTF8_EXTENDED) {
-		count += UTF8_SET_EXTENDED_LEN;
+		count += UTF8_SET_FULL_INV_LEN;
+
+	if (flags & CHARSET_SHADE) {
+		enabled_flags |= CHARSET_SHADE;
+		count += UTF8_SET_SHADE_LEN;
 		if (flags & CHARSET_INVERSE)
-			count += UTF8_SET_EXTENDED_INV_LEN;
+			count += UTF8_SET_SHADE_INV_LEN;
+	}
+
+	if ((flags & CHARSET_RES_HALF) || (flags & CHARSET_RES_QUARTER)) {
+		enabled_flags |= CHARSET_RES_HALF;
+		count += UTF8_SET_HALF_LEN;
+		if (flags & CHARSET_INVERSE)
+			count += UTF8_SET_HALF_INV_LEN;
+	}
+
+	if ((flags & CHARSET_RES_QUARTER) && (flags & CHARSET_UTF8_EXTENDED)) {
+		enabled_flags |= CHARSET_RES_QUARTER;
+		count += UTF8_SET_QUARTER_LEN;
+		if (flags & CHARSET_INVERSE)
+			count += UTF8_SET_QUARTER_INV_LEN;
 	}
 
 	struct charset *charset = malloc(sizeof(struct charset));
 
 	charset->name = "utf8";
-	if (flags & CHARSET_UTF8_EXTENDED) {
-		if (flags & CHARSET_INVERSE) {
+
+	charset->description = N_("UTF-8 full-block elements");
+	if (enabled_flags & CHARSET_INVERSE) {
+		charset->description =
+			N_("UTF-8 full-block elements with inverse");
+	}
+	if (enabled_flags & CHARSET_RES_HALF) {
+		charset->description = N_("UTF-8 half-block elements");
+		if (enabled_flags & CHARSET_INVERSE) {
 			charset->description =
-				N_("Extended UTF-8 block elements with inverse");
-		} else {
-			charset->description =
-				N_("Extended UTF-8 block elements");
+				N_("UTF-8 half-block elements with inverse");
 		}
-	} else {
-		if (flags & CHARSET_INVERSE) {
+	}
+	if (enabled_flags & CHARSET_RES_QUARTER) {
+		charset->description = N_("UTF-8 quarter-block elements");
+		if (enabled_flags & CHARSET_INVERSE) {
 			charset->description =
-				N_("UTF-8 block elements with inverse");
-		} else {
-			charset->description =
-				N_("UTF-8 block elements");
+				N_("UTF-8 quarter-block elements with inverse");
 		}
 	}
 
@@ -188,28 +250,55 @@ struct charset *charset_get_utf8(enum charset_flags flags) {
 
 	count = 0;
 
-	memcpy(&glyph[count], utf8_set_basic,
-		sizeof(utf8_set_basic));
-	count += UTF8_SET_BASIC_LEN;
-	if (flags & CHARSET_INVERSE) {
-		memcpy(&glyph[count], utf8_set_basic_inv,
-			sizeof(utf8_set_basic_inv));
-		count += UTF8_SET_BASIC_INV_LEN;
+	memcpy(&glyph[count], utf8_set_full, sizeof(utf8_set_full));
+	count += UTF8_SET_FULL_LEN;
+
+	if (enabled_flags & CHARSET_INVERSE) {
+		memcpy(&glyph[count], utf8_set_full_inv,
+				sizeof(utf8_set_full_inv));
+		count += UTF8_SET_FULL_INV_LEN;
 	}
 
-	if (flags & CHARSET_UTF8_EXTENDED) {
-		memcpy(&glyph[count], utf8_set_extended,
-			sizeof(utf8_set_extended));
-		count += UTF8_SET_EXTENDED_LEN;
-		if (flags & CHARSET_INVERSE) {
-			memcpy(&glyph[count], utf8_set_extended_inv,
-				sizeof(utf8_set_extended_inv));
-			count += UTF8_SET_EXTENDED_INV_LEN;
+	if (enabled_flags & CHARSET_SHADE) {
+		memcpy(&glyph[count], utf8_set_shade, sizeof(utf8_set_shade));
+		count += UTF8_SET_SHADE_LEN;
+
+		if (enabled_flags & CHARSET_INVERSE) {
+			memcpy(&glyph[count], utf8_set_shade_inv,
+					sizeof(utf8_set_shade_inv));
+			count += UTF8_SET_SHADE_INV_LEN;
 		}
 	}
 
-	charset->num_glyphs = count;
+	if (enabled_flags & CHARSET_RES_HALF) {
+		memcpy(&glyph[count], utf8_set_half, sizeof(utf8_set_half));
+		count += UTF8_SET_HALF_LEN;
+
+		if (enabled_flags & CHARSET_INVERSE) {
+			memcpy(&glyph[count], utf8_set_half_inv,
+					sizeof(utf8_set_half_inv));
+			count += UTF8_SET_HALF_INV_LEN;
+		}
+	}
+
+	if (enabled_flags & CHARSET_RES_QUARTER) {
+		memcpy(&glyph[count], utf8_set_quarter,
+				sizeof(utf8_set_quarter));
+		count += UTF8_SET_QUARTER_LEN;
+
+		if (enabled_flags & CHARSET_INVERSE) {
+			memcpy(&glyph[count], utf8_set_quarter_inv,
+				sizeof(utf8_set_quarter_inv));
+			count += UTF8_SET_QUARTER_INV_LEN;
+		}
+	}
+
 	charset->glyph = glyph;
+
+	charset->enter = "";
+	charset->exit = "";
+	charset->num_glyphs = count;
+	charset->flags = enabled_flags;
 
 	return charset;
 }

@@ -24,12 +24,6 @@ int main(void) {
 
 	driver_test(driver);
 
-	char *codeset = nl_langinfo(CODESET);
-	bool have_utf8 = true;
-	if (strcmp(codeset, "UTF-8") != 0) {
-		have_utf8 = false;
-	}
-
 	int err = 0;
 	if (setupterm(NULL, 1, &err) == ERR) {
 		if (err == -1) {
@@ -61,31 +55,19 @@ int main(void) {
 	printf("Terminfo knows how to use %d colors\n", max_colors);
 
 	printf("Testing semigraphics abilities:\n");
-	if (have_utf8) {
-		printf("UTF-8\n");
-		struct charset *charset = charset_get_utf8(
-			CHARSET_INVERSE|CHARSET_UTF8_EXTENDED);
-		size_t chars = 0;
-		const struct glyph **glyph = charset_get_glyphs(charset, &chars);
-		putp(charset_get_enter_string(charset));
-		for (size_t i = 0; i < chars; i++)
-			fputs(glyph[i]->code, stdout);
-		putp(charset_get_exit_string(charset));
-		putc('\n', stdout);
-		charset_free(charset);
-	}
-	if (enter_alt_charset_mode) {
-		printf("Alternate character set:\n");
-		struct charset *charset = charset_get_acs(
-			CHARSET_INVERSE);
-		size_t chars = 0;
-		const struct glyph **glyph = charset_get_glyphs(charset, &chars);
-		putp(charset_get_enter_string(charset));
-		for (size_t i = 0; i < chars; i++)
-			fputs(glyph[i]->code, stdout);
-		putp(charset_get_exit_string(charset));
-		putc('\n', stdout);
-		charset_free(charset);
-	}
+	struct charset *charset = charset_get_default(
+		CHARSET_INVERSE | CHARSET_RES_HALF | CHARSET_RES_QUARTER |
+		CHARSET_SHADE | CHARSET_UTF8_EXTENDED);
+	printf("Character set: %s (%s)\n",
+			charset_get_name(charset),
+			charset_get_description(charset));
+	size_t chars = 0;
+	const struct glyph **glyph = charset_get_glyphs(charset, &chars);
+	putp(charset_get_enter_string(charset));
+	for (size_t i = 0; i < chars; i++)
+		fputs(glyph[i]->code, stdout);
+	putp(charset_get_exit_string(charset));
+	putc('\n', stdout);
+	charset_free(charset);
 	return 0;
 }

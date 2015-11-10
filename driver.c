@@ -1,14 +1,12 @@
-#include "driver.h"
 #include "driver_internal.h"
+#include "charset.h"
 
 #include <locale.h>
 #include <glib/gi18n.h>
 #include <stdlib.h>
 
 const struct driver *driver_get_default(void) {
-	struct driver *driver = malloc(sizeof(struct driver));
-	memcpy(driver, &driver_rgb, sizeof(struct driver));
-	return driver;
+	return driver_get_rgb(TRUE);
 }
 
 const char *driver_get_name(const struct driver *driver) {
@@ -27,7 +25,27 @@ guint32 driver_get_bg_colors(const struct driver *driver) {
 	return driver->bg_colors;
 }
 
+const struct charset *driver_get_charset(const struct driver *driver) {
+	return driver->charset;
+}
+
 void driver_test(const struct driver *driver) {
+	g_print(_("Selected output driver: %s (%s)\n"),
+			driver_get_name(driver),
+			driver_get_description(driver));
+	g_print(_("Output drivers supports %u fg and %u bg colors.\n"),
+			driver_get_fg_colors(driver),
+			driver_get_bg_colors(driver));
+
+	const struct charset *charset = driver_get_charset(driver);
+	if (charset == NULL) {
+		g_print(_("Driver does not use a charset.\n"));
+	} else {
+		g_print(_("Selected output charset: %s (%s)\n"),
+				charset_get_name(charset),
+				charset_get_description(charset));
+	}
+
 	const char *charset_name;
 	gboolean utf8 = g_get_charset(&charset_name);
 
@@ -42,11 +60,4 @@ void driver_test(const struct driver *driver) {
 			"Try changing your locale LC_CTYPE (it's currently \"%s\").\n\n"),
 				charset_name, lc_ctype);
 	}
-
-	g_print(_("Selected output driver: %s (%s)\n"),
-			driver_get_name(driver),
-			driver_get_description(driver));
-	g_print(_("Output drivers supports %u fg and %u bg colors.\n"),
-			driver_get_fg_colors(driver),
-			driver_get_bg_colors(driver));
 }

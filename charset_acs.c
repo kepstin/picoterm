@@ -29,27 +29,46 @@ static const struct glyph acs_block = {
 };
 
 struct charset *charset_get_acs(enum charset_flags flags) {
-	size_t count = 1; /* We also use ASCII 'space' character */
+	if (acs_chars == NULL && !(flags & CHARSET_FORCE)) {
+		/* Terminal doesn't support ACS, bail out. */
+		return NULL;
+	}
 
-	if (acs_chars != NULL && acs_chars != (char *) -1) {
+	size_t count = 1; /* ASCII space is always available. */
+
+	enum charset_flags enabled_flags = 0;
+
+	if (acs_chars == NULL) {
+		/* If terminfo doesn't support ACS but force is enabled,
+		 * use the standard ANSI codes. */
+		acs_ckboard_code[0] = 'a';
+		if (flags & CHARSET_INVERSE) {
+			acs_block_code[0] = '0';
+		}
+	} else {
 		for (size_t i = 0; acs_chars[i]; i += 2) {
-			if (acs_chars[i] == 'a') {
+			switch (acs_chars[i]) {
+			case 'a':
 				acs_ckboard_code[0] = acs_chars[i + 1];
 				count++;
-			}
-			if (flags & CHARSET_INVERSE) {
-				if (acs_chars[i] == '0') {
-					acs_block_code[0] = acs_chars[i + 1];
-					count++;
-				}
+				break;
+			case '0':
+				acs_block_code[0] = acs_chars[i + 1];
+				count++;
+				break;
 			}
 		}
+	}
+
+	/* We advertise inverse support only if the full block is available. */
+	if ((flags & CHARSET_INVERSE) && acs_block_code[0] != '\0') {
+		enabled_flags |= CHARSET_INVERSE;
 	}
 
 	struct charset *charset = malloc(sizeof(struct charset));
 
 	charset->name = "acs";
-	if (flags & CHARSET_INVERSE) {
+	if (enabled_flags & CHARSET_INVERSE) {
 		charset->description =
 			N_("ANSI Alternate Character Set with inverse");
 	} else {
@@ -69,10 +88,25 @@ struct charset *charset_get_acs(enum charset_flags flags) {
 			glyph[count++] = &acs_block;
 	}
 
-	charset->num_glyphs = count;
 	charset->glyph = glyph;
-	charset->enter = enter_alt_charset_mode;
-	charset->exit = exit_alt_charset_mode;
+
+	if (acs_chars == NULL) {
+		/* If terminfo doesn't support ACS but force is enabled,
+		 * use the standard ANSI codes. */
+		charset->enter = "\e[11m"; /* Select 1st alternate font */
+		charset->exit = "\e[10m"; /* Select primary (default) font */
+	} else {
+		/* Use the terminfo definitions */
+		charset->enter = enter_alt_charset_mode;
+		if (!charset->enter)
+			charset->enter = "";
+		charset->exit = exit_alt_charset_mode;
+		if (!charset->exit)
+			charset->exit = "";
+	}
+
+	charset->num_glyphs = count;
+	charset->flags = enabled_flags;
 
 	return charset;
 }

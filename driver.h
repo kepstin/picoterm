@@ -3,6 +3,12 @@
 
 #include <glib.h>
 
+enum driver_resolution {
+	DRIVER_RES_FULL = 0,
+	DRIVER_RES_HALF,
+	DRIVER_RES_QUARTER
+};
+
 /* Options to include in the application's command-line handling */
 GOptionGroup *driver_get_option_group(void);
 
@@ -21,6 +27,9 @@ guint32 driver_get_fg_colors(const struct driver *driver);
 
 /* Get the number of background colors supported */
 guint32 driver_get_bg_colors(const struct driver *driver);
+
+/* Get the charset that the driver is using */
+const struct charset *driver_get_charset(const struct driver *driver);
 
 /* Get the max number of pixels wide and tall that the driver is capable of
  * rendering */

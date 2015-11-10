@@ -3,13 +3,16 @@
 
 #include "charset.h"
 
+#include <glib.h>
+
 struct charset {
 	const char *name;
 	const char *description;
-	size_t num_glyphs;
 	const struct glyph **glyph;
 	const char *enter;
 	const char *exit;
+	gsize num_glyphs;
+	enum charset_flags flags;
 };
 
 #endif
