@@ -8,7 +8,10 @@
 #include <math.h>
 #include <locale.h>
 
-#define QUIRK_SRGB_BLEND TRUE
+#include <curses.h>
+#include <term.h>
+
+#define QUIRK_SRGB_BLEND FALSE
 
 #define SCREEN_SIZE (80 * 80)
 static void print_image(const char *filename, const struct palette *palette) {
@@ -54,7 +57,7 @@ static void print_image(const char *filename, const struct palette *palette) {
 	enum charset_flags charset_flags = CHARSET_RES_HALF | CHARSET_SHADE;
 	if (fg_count != bg_count)
 		charset_flags |= CHARSET_INVERSE;
-	struct charset *charset = charset_get_utf8(charset_flags);
+	struct charset *charset = charset_get_default(charset_flags);
 	if (!charset) {
 		printf("No charset!\n");
 		return;
@@ -69,7 +72,11 @@ static void print_image(const char *filename, const struct palette *palette) {
 	size_t rows = pixels / cols;
 	unsigned row;
 
+	const char *enter_string = charset_get_enter_string(charset);
+	const char *exit_string = charset_get_exit_string(charset);
 	for (row = 0; row < rows; row += 2) {
+		if (enter_string)
+			printf("%s", enter_string);
 		for (unsigned i = 0; i < 80; i++) {
 			const struct glyph *block_glyph = glyphs[3];
 			uint16_t block_fg = fg_count;
@@ -180,9 +187,12 @@ static void print_image(const char *filename, const struct palette *palette) {
 			palette->code(code, block_fg, block_bg);
 			printf("%s%s", code, block_glyph->code);
 		}
+		if (exit_string)
+			printf("%s", exit_string);
 		palette->reset(code);
 		printf("%s\n", code);
 	}
+
 
 	cmsDeleteTransform(trans);
 }
@@ -221,7 +231,20 @@ static void print_image_truecolor(const char *filename) {
 int main(int argc, char *argv[]) {
 	setlocale(LC_ALL, "");
 
-	struct palette *palette = &palette_tango;
+	int err = 0;
+	if (setupterm(NULL, 1, &err) == ERR) {
+		if (err == -1) {
+			printf("The terminfo database could not be found.\n");
+		}
+		if (err == 0) {
+			printf("You are using a generic or unknown setting for TERM,\n");
+		}
+		printf("You can try manually specifying an output mode.\n");
+		exit(1);
+	}
+
+
+	struct palette *palette = &palette_xterm8;
 
 	uint32_t fg_count = palette->fg_count;
 	uint32_t bg_count = palette->bg_count;

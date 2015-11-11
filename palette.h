@@ -22,6 +22,8 @@ extern struct palette palette_solarized;
 extern struct palette palette_tango;
 extern struct palette palette_vga;
 extern struct palette palette_vga8;
+extern struct palette palette_xterm;
+extern struct palette palette_xterm8;
 
 /* Shared helper functions used by multiple palettes */
 
