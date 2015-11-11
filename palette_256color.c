@@ -1,17 +1,17 @@
 #include "palette.h"
 
-#include <lcms2.h>
 #include <stdlib.h>
+#include <glib.h>
 
 /* The points used on the color cube */
 #define COLOR_COUNT 6
-static const uint8_t const color[COLOR_COUNT] = {
+static const guint8 const color[COLOR_COUNT] = {
 	0x00, 0x5f, 0x87, 0xaf, 0xd7, 0xff
 };
 
 /* The points used on the greyscale gradient */
 #define GREY_COUNT 24
-static const uint8_t const grey[GREY_COUNT] = {
+static const guint8 const grey[GREY_COUNT] = {
 	0x08, 0x12, 0x1c, 0x26, 0x30, 0x3a,
 	0x44, 0x4e, 0x58, 0x60, 0x66, 0x76,
 	0x80, 0x8a, 0x94, 0x9e, 0xa8, 0xb2,
@@ -24,31 +24,29 @@ static const uint8_t const grey[GREY_COUNT] = {
 /* Convert from palette index to xterm color number */
 #define TO_XTERM(i) ((i) + 16)
 
-static const cmsCIELab *palette = NULL;
+static const guint8 *palette = NULL;
 
-static const cmsCIELab *get_palette(void) {
+static const guint8 *get_palette(void) {
 	if (palette == NULL) {
 		/* Generate the sRGB palette */
-		uint8_t *sRGB = malloc(COUNT * 3 * sizeof(uint8_t));
-		unsigned i = 0;
-		for (unsigned r = 0; r < COLOR_COUNT; r++) {
-			for (unsigned g = 0; g < COLOR_COUNT; g++) {
-				for (unsigned b = 0; b < COLOR_COUNT; b++) {
+		guint8 *sRGB = g_new(guint8, COUNT * 3);
+		gsize i = 0;
+		for (gsize r = 0; r < COLOR_COUNT; r++) {
+			for (gsize g = 0; g < COLOR_COUNT; g++) {
+				for (gsize b = 0; b < COLOR_COUNT; b++) {
 					sRGB[i++] = color[r];
 					sRGB[i++] = color[g];
 					sRGB[i++] = color[b];
 				}
 			}
 		}
-		for (unsigned k = 0; k < GREY_COUNT; k++) {
+		for (gsize k = 0; k < GREY_COUNT; k++) {
 			sRGB[i++] = grey[k]; /* r */
 			sRGB[i++] = grey[k]; /* g */
 			sRGB[i++] = grey[k]; /* b */
 		}
 
-		palette = palette_convert_srgb_lab(sRGB, COUNT);
-
-		free(sRGB);
+		palette = sRGB;
 	}
 
 	return palette;

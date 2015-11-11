@@ -34,7 +34,7 @@ static const struct glyph utf8_left_half_block = {
 /* U+2590 RIGHT HALF BLOCK */
 static const struct glyph utf8_right_half_block = {
 	.code = "\xE2\x96\x90",
-	.weights = { { 0.00, 0.00 }, { 1.00, 1.00 } }
+	.weights = { { 0.00, 1.00 }, { 0.00, 1.00 } }
 };
 /* U+2591 LIGHT SHADE - 25% foreground */
 static const struct glyph utf8_light_shade = {
@@ -49,7 +49,7 @@ static const struct glyph utf8_medium_shade = {
 /* U+2593 DARK SHADE - 75% foreground */
 static const struct glyph utf8_dark_shade = {
 	.code = "\xE2\x96\x93",
-	.weights = { { 0.75, 0.57 }, { 0.75, 0.75 } }
+	.weights = { { 0.75, 0.75 }, { 0.75, 0.75 } }
 };
 /* U+2596 QUADRANT LOWER LEFT */
 static const struct glyph utf8_quadrant_ll = {
@@ -295,8 +295,8 @@ struct charset *charset_get_utf8(enum charset_flags flags) {
 
 	charset->glyph = glyph;
 
-	charset->enter = "";
-	charset->exit = "";
+	charset->enter = NULL;
+	charset->exit = NULL;
 	charset->num_glyphs = count;
 	charset->flags = enabled_flags;
 

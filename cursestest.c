@@ -20,7 +20,7 @@ int main(void) {
 	setlocale(LC_ALL, "");
 	textdomain(GETTEXT_PACKAGE);
 
-	const struct driver *driver = driver_get_default();
+	struct driver *driver = driver_get_default();
 
 	driver_test(driver);
 
@@ -53,6 +53,9 @@ int main(void) {
 	}
 	printf("Terminal appears to be %dx%d\n", columns, lines);
 	printf("Terminfo knows how to use %d colors\n", max_colors);
+
+	driver_free(driver);
+	driver = NULL;
 
 	printf("Testing semigraphics abilities:\n");
 	struct charset *charset = charset_get_default(

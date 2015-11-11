@@ -1,3 +1,4 @@
+#include "charset.h"
 #include "palette.h"
 
 #include <lcms2.h>
@@ -5,6 +6,9 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include <math.h>
+#include <locale.h>
+
+#define QUIRK_SRGB_BLEND TRUE
 
 #define SCREEN_SIZE (80 * 80)
 static void print_image(const char *filename, const struct palette *palette) {
@@ -13,17 +17,51 @@ static void print_image(const char *filename, const struct palette *palette) {
 
 	size_t pixels = fread(buf, 3, SCREEN_SIZE, f);
 
-	cmsCIELab *lab_buf = malloc(pixels * sizeof(cmsCIELab));
+	float *lin_buf = malloc(pixels * 3 * sizeof(float));
 
-	cmsHPROFILE hsRGB = cmsCreate_sRGBProfile();
-	cmsHPROFILE hLab = cmsCreateLab4Profile(cmsD50_xyY());
+	cmsHPROFILE hsRGB = cmsOpenProfileFromFile("sRGB-elle-V4-srgbtrc.icc", "r");
+	if (hsRGB == NULL) {
+		printf("Couldn't load sRGB icc profile\n");
+		return;
+	}
+	cmsHPROFILE hsRGBlin = cmsOpenProfileFromFile("sRGB-elle-V4-g10.icc", "r");
+	if (hsRGBlin == NULL) {
+		printf("Couldn't load sRGB linear icc profile\n");
+		return;
+	}
 	cmsHTRANSFORM trans = cmsCreateTransform(hsRGB, TYPE_RGB_8,
-			hLab, TYPE_Lab_DBL,
+			hsRGBlin, TYPE_RGB_FLT,
 			INTENT_PERCEPTUAL, 0);
+	if (trans == NULL) {
+		printf("Couldn't build color-space transform\n");
+		return;
+	}
 	cmsCloseProfile(hsRGB);
-	cmsCloseProfile(hLab);
-	cmsDoTransform(trans, buf, lab_buf, pixels);
-	cmsDeleteTransform(trans);
+	cmsCloseProfile(hsRGBlin);
+	cmsDoTransform(trans, buf, lin_buf, pixels);
+
+	uint16_t fg_count = palette->fg_count;
+	const guint8 *srgb_fg_palette = palette->fg_palette();
+	float *fg_palette = malloc(fg_count * 3 * sizeof(float));
+	cmsDoTransform(trans, srgb_fg_palette, fg_palette, fg_count);
+
+	uint16_t bg_count = palette->bg_count;
+	const guint8 *srgb_bg_palette = palette->bg_palette();
+	float *bg_palette = malloc(bg_count * 3 * sizeof(float));
+	cmsDoTransform(trans, srgb_bg_palette, bg_palette, bg_count);
+
+	//enum charset_flags charset_flags = CHARSET_RES_HALF;
+	enum charset_flags charset_flags = CHARSET_RES_HALF | CHARSET_SHADE;
+	if (fg_count != bg_count)
+		charset_flags |= CHARSET_INVERSE;
+	struct charset *charset = charset_get_utf8(charset_flags);
+	if (!charset) {
+		printf("No charset!\n");
+		return;
+	}
+
+	size_t glyph_count = 0;
+	const struct glyph **glyphs = charset_get_glyphs(charset, &glyph_count);
 
 	char *code = malloc(palette->escape_len);
 
@@ -31,99 +69,122 @@ static void print_image(const char *filename, const struct palette *palette) {
 	size_t rows = pixels / cols;
 	unsigned row;
 
-	const cmsCIELab *subrow_palette[2] = { palette->fg_palette(), palette->bg_palette() };
-	uint16_t subrow_count[2] = { palette->fg_count, palette->bg_count };
-	const char *charcode[2] = { "\342\226\200", "\342\226\204" };
-
-	unsigned max_k = palette->fg_count != palette->bg_count ? 2 : 1;
-
 	for (row = 0; row < rows; row += 2) {
-		cmsCIELab dither_err[2][2] = { 0 };
 		for (unsigned i = 0; i < 80; i++) {
-			unsigned char_i = 0;
-			uint16_t color[2][2] = {
-				{ subrow_count[0], subrow_count[1] },
-				{ subrow_count[1], subrow_count[0] }
-			};
-			double char_de = HUGE_VAL;
-			for (unsigned k = 0; k < max_k; k++) {
-				double this_de = 0;
-				for (unsigned subrow = 0; subrow < 2 && row + subrow < rows; subrow++) {
-					unsigned r = (subrow + k) % 2;
-					double de = HUGE_VAL;
-					size_t pixel = (row + subrow) * 80 + i;
-					const cmsCIELab *p = subrow_palette[r];
-					uint16_t count = subrow_count[r];
-					uint16_t c = color[k][r];
-					cmsCIELab lab_pix = lab_buf[pixel];
+			const struct glyph *block_glyph = glyphs[3];
+			uint16_t block_fg = fg_count;
+			uint16_t block_bg = bg_count;
+			double block_sq_diff = HUGE_VAL;
+			float block_err_top[3] = { 0, 0, 0 };
+			float block_err_bot[3] = { 0, 0, 0 };
+			gsize top_pos = (row * 80 + i) * 3;
+			gsize bot_pos = ((row + 1) * 80 + i) * 3;
 
-					if (subrow > 0) {
-						lab_pix.L += dither_err[k][subrow-1].L / 4;
-						lab_pix.a += dither_err[k][subrow-1].a / 4;
-						lab_pix.b += dither_err[k][subrow-1].b / 4;
-					}
+			for (size_t glyph_i = 0; glyph_i < glyph_count; glyph_i++) {
+				const struct glyph *glyph = glyphs[glyph_i];
+				float weight_top = glyph->weights[0][0];
+				float weight_bot = glyph->weights[1][0];
 
-					for (uint16_t j = 0; j < count; j++) {
-						double new_de = cmsCIE94DeltaE(&lab_pix, &p[j]);
-						if (new_de < de) {
-							de = new_de;
-							c = j;
+				for (uint16_t fg = 0; fg < fg_count; fg++) {
+					gsize fg_pos = fg * 3;
+
+					for (uint16_t bg = 0; bg < bg_count; bg++) {
+						gsize bg_pos = bg * 3;
+
+						double sq_diff = 0;
+
+						float input_top[3];
+						float output_top[3];
+						float err_top[3];
+						if (QUIRK_SRGB_BLEND) {
+							guint8 srgb_output[3] = {
+								srgb_fg_palette[fg_pos + 0] * weight_top +
+									srgb_bg_palette[bg_pos + 0] * (1 - weight_top),
+								srgb_fg_palette[fg_pos + 1] * weight_top +
+									srgb_bg_palette[bg_pos + 1] * (1 - weight_top),
+								srgb_fg_palette[fg_pos + 2] * weight_top +
+									srgb_bg_palette[bg_pos + 2] * (1 - weight_top)
+							};
+							cmsDoTransform(trans, srgb_output, output_top, 1);
+						}
+						for (size_t c = 0; c < 3; c++) {
+							input_top[c] = lin_buf[top_pos + c];
+							if (!QUIRK_SRGB_BLEND)
+								output_top[c] = fg_palette[fg_pos + c] * weight_top +
+									bg_palette[bg_pos + c] * (1 - weight_top);
+							err_top[c] = input_top[c] - output_top[c];
+							sq_diff += err_top[c] * err_top[c];
+						}
+
+						float input_bot[3] = { 0 };
+						float output_bot[3];
+						float err_bot[3];
+						if (QUIRK_SRGB_BLEND) {
+							guint8 srgb_output[3] = {
+								srgb_fg_palette[fg_pos + 0] * weight_bot +
+									srgb_bg_palette[bg_pos + 0] * (1 - weight_bot),
+								srgb_fg_palette[fg_pos + 1] * weight_bot +
+									srgb_bg_palette[bg_pos + 1] * (1 - weight_bot),
+								srgb_fg_palette[fg_pos + 2] * weight_bot +
+									srgb_bg_palette[bg_pos + 2] * (1 - weight_bot)
+							};
+							cmsDoTransform(trans, srgb_output, output_bot, 1);
+						}
+						for (size_t c = 0; c < 3; c++) {
+							if (row + 1 < rows) {
+								input_bot[c] = lin_buf[bot_pos + c];
+								input_bot[c] += err_top[c] / 4;
+							}
+							if (!QUIRK_SRGB_BLEND)
+								output_bot[c] = fg_palette[fg_pos + c] * weight_bot +
+									bg_palette[bg_pos + c] * (1 - weight_bot);
+							err_bot[c] = input_bot[c] - output_bot[c];
+							sq_diff += err_bot[c] * err_bot[c];
+						}
+
+						if (sq_diff < block_sq_diff) {
+							block_glyph = glyph;
+							block_fg = fg;
+							block_bg = bg;
+							block_sq_diff = sq_diff;
+							for (size_t c = 0; c < 3; c++) {
+								block_err_top[c] = err_top[c];
+								block_err_bot[c] = err_bot[c];
+							}
 						}
 					}
-					this_de += de;
-					color[k][r] = c;
-					dither_err[k][subrow].L = (lab_buf[pixel].L - p[c].L);
-					dither_err[k][subrow].a = (lab_buf[pixel].a - p[c].a);
-					dither_err[k][subrow].b = (lab_buf[pixel].b - p[c].b);
-				}
-				if (this_de < char_de) {
-					char_de = this_de;
-					char_i = k;
 				}
 			}
 
 			/* Apply the resulting dither errors */
 			if (i + 1 < cols) {
-				lab_buf[row * cols + i + 1].L += dither_err[char_i][0].L / 2;
-				lab_buf[row * cols + i + 1].a += dither_err[char_i][0].a / 2;
-				lab_buf[row * cols + i + 1].b += dither_err[char_i][0].b / 2;
+				for (size_t c = 0; c < 3; c++)
+					lin_buf[top_pos + 1 + c] += block_err_top[c] / 2;
 				if (row + 1 < rows) {
-					lab_buf[(row + 1) * cols + i + 1].L += dither_err[char_i][1].L / 2;
-					lab_buf[(row + 1) * cols + i + 1].a += dither_err[char_i][1].a / 2;
-					lab_buf[(row + 1) * cols + i + 1].b += dither_err[char_i][1].b / 2;
+					for (size_t c = 0; c < 3; c++)
+						lin_buf[bot_pos + 1 + c] += block_err_bot[c] / 2;
 				}
 			}
+			gsize next_pos = ((row + 2) * 80 + i) * 3;
 			if (row + 2 < rows && i > 0) {
-				lab_buf[(row + 2) * cols + i - 1].L += dither_err[char_i][0].L / 4;
-				lab_buf[(row + 2) * cols + i - 1].a += dither_err[char_i][0].a / 4;
-				lab_buf[(row + 2) * cols + i - 1].b += dither_err[char_i][0].b / 4;
-				if (row + 2 < rows) {
-					lab_buf[(row + 2) * cols + i - 1].L += dither_err[char_i][1].L / 4;
-					lab_buf[(row + 2) * cols + i - 1].a += dither_err[char_i][1].a / 4;
-					lab_buf[(row + 2) * cols + i - 1].b += dither_err[char_i][1].b / 4;
+				for (size_t c = 0; c < 3; c++) {
+					lin_buf[next_pos - 1 + c] += block_err_top[c] / 4;
+					lin_buf[next_pos - 1 + c] += block_err_bot[c] / 4;
 				}
 			}
 			if (row + 2 < rows) {
-				lab_buf[(row + 2) * cols + i].L += dither_err[char_i][1].L / 4;
-				lab_buf[(row + 2) * cols + i].a += dither_err[char_i][1].a / 4;
-				lab_buf[(row + 2) * cols + i].b += dither_err[char_i][1].b / 4;
-				/*
-				lab_buf[(row + 2) * cols + i].L += dither_err[char_i][0].L / 4;
-				lab_buf[(row + 2) * cols + i].a += dither_err[char_i][0].a / 4;
-				lab_buf[(row + 2) * cols + i].b += dither_err[char_i][0].b / 4;
-				if (row + 3 < rows) {
-					lab_buf[(row + 3) * cols + i].L += dither_err[char_i][1].L / 4;
-					lab_buf[(row + 3) * cols + i].a += dither_err[char_i][1].a / 4;
-					lab_buf[(row + 3) * cols + i].b += dither_err[char_i][1].b / 4;
-				}*/
+				for (size_t c = 0; c < 3; c++)
+					lin_buf[next_pos + c] += block_err_bot[c] / 4;
 			}
 
-			palette->code(code, color[char_i][0], color[char_i][1]);
-			printf("%s%s", code, charcode[char_i]);
+			palette->code(code, block_fg, block_bg);
+			printf("%s%s", code, block_glyph->code);
 		}
 		palette->reset(code);
 		printf("%s\n", code);
 	}
+
+	cmsDeleteTransform(trans);
 }
 
 static void print_image_truecolor(const char *filename) {
@@ -158,12 +219,12 @@ static void print_image_truecolor(const char *filename) {
 }
 
 int main(int argc, char *argv[]) {
-	struct palette *palette = &palette_solarized;
+	setlocale(LC_ALL, "");
+
+	struct palette *palette = &palette_tango;
 
 	uint32_t fg_count = palette->fg_count;
-	const cmsCIELab *fg_palette = palette->fg_palette();
 	uint32_t bg_count = palette->bg_count;
-	const cmsCIELab *bg_palette = palette->bg_palette();
 
 	uint32_t count = fg_count > bg_count ? fg_count : bg_count;
 
@@ -174,21 +235,13 @@ int main(int argc, char *argv[]) {
 	for (unsigned i = 0; i < count; i++) {
 		if (i < fg_count) {
 			palette->code(code, i, bg_count);
-			printf("%3u %s██%s %8.3f %8.3f %8.3f ",
-					i, code, reset,
-					fg_palette[i].L,
-					fg_palette[i].a,
-					fg_palette[i].b);
+			printf("%3u %s██%s ", i, code, reset);
 		} else {
-			printf("                                   ");
+			printf("       ");
 		}
 		if (i < bg_count) {
 			palette->code(code, fg_count, i);
-			printf("%3u %s  %s %8.3f %8.3f %8.3f ",
-					i, code, reset,
-					bg_palette[i].L,
-					bg_palette[i].a,
-					bg_palette[i].b);
+			printf("%3u %s  %s ", i, code, reset);
 		}
 		printf("\n");
 	}
@@ -200,7 +253,7 @@ int main(int argc, char *argv[]) {
 	printf("\n");
 
 	if (argc > 1) {
-		print_image_truecolor(argv[1]);
+		//print_image_truecolor(argv[1]);
 		print_image(argv[1], palette);
 	}
 

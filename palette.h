@@ -1,17 +1,17 @@
 #ifndef PICOTERM_PALETTE_H
 #define PICOTERM_PALETTE_H
 
-#include <lcms2.h>
 #include <stdint.h>
+#include <glib.h>
 
 struct palette {
 	const char *name;
-	uint16_t fg_count;
-	uint16_t bg_count;
-	const cmsCIELab *(* fg_palette)(void);
-	const cmsCIELab *(* bg_palette)(void);
-	size_t escape_len;
-	void (* code)(char *buf, uint16_t fg, uint16_t bg);
+	guint16 fg_count;
+	guint16 bg_count;
+	const guint8 *(* fg_palette)(void);
+	const guint8 *(* bg_palette)(void);
+	gsize escape_len;
+	void (* code)(char *buf, guint16 fg, guint16 bg);
 	void (* reset)(char *buf);
 };
 
@@ -24,9 +24,6 @@ extern struct palette palette_vga;
 extern struct palette palette_vga8;
 
 /* Shared helper functions used by multiple palettes */
-
-/* Convert a palette from 8 bit per component R, G, B to CIELab */
-const cmsCIELab *palette_convert_srgb_lab(const uint8_t *in, uint16_t entries);
 
 /* For terminals that support 16 colors, but select the bright fg colors with
  * bold, and bright background colors with blink.

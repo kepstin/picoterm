@@ -3,24 +3,7 @@
 #include <stdbool.h>
 #include <string.h>
 #include <stdlib.h>
-
-const cmsCIELab *palette_convert_srgb_lab(const uint8_t *in, uint16_t entries) {
-	cmsCIELab *out = malloc(entries * sizeof(cmsCIELab));
-
-	cmsHPROFILE hsRGB = cmsCreate_sRGBProfile();
-	cmsHPROFILE hLab = cmsCreateLab4Profile(cmsD50_xyY());
-	cmsHTRANSFORM trans = cmsCreateTransform(hsRGB, TYPE_RGB_8,
-			hLab, TYPE_Lab_DBL,
-			INTENT_PERCEPTUAL, 0);
-	cmsCloseProfile(hsRGB);
-	cmsCloseProfile(hLab);
-
-	cmsDoTransform(trans, in, out, entries);
-
-	cmsDeleteTransform(trans);
-
-	return out;
-}
+#include <stdio.h>
 
 void palette_code_16color_bold_blink(char *buf, uint16_t fg, uint16_t bg) {
 	const char *bold = "22;";

@@ -14,7 +14,11 @@ GOptionGroup *driver_get_option_group(void);
 
 /* Load the driver selected based on the command-line options and what
  * can be autodetected (from terminfo, etc.) */
-const struct driver *driver_get_default(void);
+struct driver *driver_get_default(void);
+
+/* Free the memory used by a driver, including internal allocations,
+ * charset, palette, etc. */
+void driver_free(struct driver *driver);
 
 /* Get the name of the driver */
 const char *driver_get_name(const struct driver *driver);
@@ -30,6 +34,9 @@ guint32 driver_get_bg_colors(const struct driver *driver);
 
 /* Get the charset that the driver is using */
 const struct charset *driver_get_charset(const struct driver *driver);
+
+/* Get the palette that the driver is using */
+const struct palette *driver_get_palette(const struct driver *driver);
 
 /* Get the max number of pixels wide and tall that the driver is capable of
  * rendering */

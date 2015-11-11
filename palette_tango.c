@@ -1,10 +1,8 @@
 #include "palette.h"
 
-#include <lcms2.h>
-
 #define COUNT 16
 
-static const uint8_t const palette_srgb[COUNT * 3] = {
+static const guint8 const palette[COUNT * 3] = {
 	0x00, 0x00, 0x00,
 	0xcc, 0x00, 0x00,
 	0x4e, 0x9a, 0x06,
@@ -23,12 +21,7 @@ static const uint8_t const palette_srgb[COUNT * 3] = {
 	0xee, 0xee, 0xec
 };
 
-static const cmsCIELab *palette = NULL;
-
-static const cmsCIELab *get_palette(void) {
-	if (palette == NULL) {
-		palette = palette_convert_srgb_lab(palette_srgb, COUNT);
-	}
+static const guint8 *get_palette(void) {
 	return palette;
 }
 
