@@ -92,6 +92,14 @@ static void print_image(const char *filename, const struct palette *palette) {
 				float weight_top = glyph->weights[0][0];
 				float weight_bot = glyph->weights[1][0];
 
+				gboolean srgb_blend = false;
+				if (weight_top != 1.0 && weight_top != 0.0 &&
+						weight_bot != 1.0 && weight_bot != 0.0 &&
+						QUIRK_SRGB_BLEND) {
+					srgb_blend = true;
+				}
+
+
 				for (uint16_t fg = 0; fg < fg_count; fg++) {
 					gsize fg_pos = fg * 3;
 
@@ -103,7 +111,7 @@ static void print_image(const char *filename, const struct palette *palette) {
 						float input_top[3];
 						float output_top[3];
 						float err_top[3];
-						if (QUIRK_SRGB_BLEND) {
+						if (srgb_blend) {
 							guint8 srgb_output[3] = {
 								srgb_fg_palette[fg_pos + 0] * weight_top +
 									srgb_bg_palette[bg_pos + 0] * (1 - weight_top),
@@ -116,7 +124,7 @@ static void print_image(const char *filename, const struct palette *palette) {
 						}
 						for (size_t c = 0; c < 3; c++) {
 							input_top[c] = lin_buf[top_pos + c];
-							if (!QUIRK_SRGB_BLEND)
+							if (!srgb_blend)
 								output_top[c] = fg_palette[fg_pos + c] * weight_top +
 									bg_palette[bg_pos + c] * (1 - weight_top);
 							err_top[c] = input_top[c] - output_top[c];
@@ -244,7 +252,7 @@ int main(int argc, char *argv[]) {
 	}
 
 
-	struct palette *palette = &palette_xterm8;
+	struct palette *palette = &palette_xterm;
 
 	uint32_t fg_count = palette->fg_count;
 	uint32_t bg_count = palette->bg_count;
