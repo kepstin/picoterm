@@ -249,7 +249,7 @@ static void print_image_truecolor(const char *filename) {
 	g_autofree gfloat (*lin_buf)[columns][3] =
 		g_malloc(sizeof(gfloat[columns][3]) * lines);
 
-	cmsDoTransform(trans, buf, lin_buf, pixels);
+	cmsDoTransform(trans, buf, lin_buf, columns * lines);
 
 	enum charset_flags charset_flags = CHARSET_RES_HALF |
 		CHARSET_RES_QUARTER | CHARSET_UTF8_EXTENDED;
@@ -381,8 +381,8 @@ int main(int argc, char *argv[]) {
 
 	uint32_t count = fg_count > bg_count ? fg_count : bg_count;
 
-	char *code = malloc(palette->escape_len);
-	char *reset = malloc(palette->escape_len);
+	g_autofree char *code = g_malloc(palette->escape_len);
+	g_autofree char *reset = g_malloc(palette->escape_len);
 	palette->reset(reset);
 
 	for (unsigned i = 0; i < count; i++) {
