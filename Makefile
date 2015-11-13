@@ -37,7 +37,8 @@ palette_xterm.o: palette_xterm.c palette.h
 picoterm.o: picoterm.c palette.h
 picoterm: palette.o palette_256color.o palette_rxvt.o palette_solarized.o \
 		palette_tango.o palette_vga.o palette_xterm.o picoterm.o \
-		charset.o charset_acs.o charset_utf8.o charset_fallback.o
+		charset.o charset_acs.o charset_utf8.o charset_fallback.o \
+		driver_term_helper.o
 
 cursestest: cursestest.o \
 	charset.o charset_acs.o charset_fallback.o charset_utf8.o \

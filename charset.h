@@ -2,6 +2,9 @@
 #define PICOTERM_CHARSET_H
 
 #include <stddef.h>
+#include <glib.h>
+
+typedef struct charset charset;
 
 /* A single glyph within the charset. */
 struct glyph {
@@ -34,18 +37,18 @@ enum charset_flags {
 /* Get the default charset, as detected from environment and terminal
  * capabilities. The only flag that is accepted is CHARSET_INVERSE,
  * others are set only by user configuration. */
-struct charset *charset_get_default(enum charset_flags flags);
+charset *charset_get_default(enum charset_flags flags);
 
 /* Get a charset that uses the VT10x graphics characters (ACS).
  * Returns NULL if terminfo says ACS isn't supported, unless you use
  * CHARSET_FORCE (in which case it assumes VT10x compatible escape codes). */
-struct charset *charset_get_acs(enum charset_flags flags);
+charset *charset_get_acs(enum charset_flags flags);
 
 /* Get a charset that only contains ASCII SPACE. It should work anywhere,
  * but the drawback is that it can only do background colors. (CHARSET_INVERSE
  * is not supported.)
  * This always succeeds, regardless of whether CHARSET_FORCE is specified. */
-struct charset *charset_get_fallback(enum charset_flags flags);
+charset *charset_get_fallback(enum charset_flags flags);
 
 /* Get a charset that uses glyphs from the Unicode Block Element Range.
  * By default it only uses glyphs that are fairly common in fonts, but you
@@ -53,10 +56,13 @@ struct charset *charset_get_fallback(enum charset_flags flags);
  * character set.
  * Returns NULL if the locale isn't using UTF-8, unless you specify
  * CHARSET_FORCE. */
-struct charset *charset_get_utf8(enum charset_flags flags);
+charset *charset_get_utf8(enum charset_flags flags);
 
 /* Free the charset structure, including any private (internal) allocations. */
-void charset_free(struct charset *charset);
+void charset_free(charset *charset);
+
+/* Allow using g_autoptr */
+G_DEFINE_AUTOPTR_CLEANUP_FUNC(charset, charset_free)
 
 /* Get the name of the charset */
 const char *charset_get_name(const struct charset *charset);

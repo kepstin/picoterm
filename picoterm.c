@@ -1,5 +1,6 @@
 #include "charset.h"
 #include "palette.h"
+#include "driver.h"
 
 #include <lcms2.h>
 #include <stdint.h>
@@ -7,11 +8,11 @@
 #include <stdio.h>
 #include <math.h>
 #include <locale.h>
+#include <glib.h>
+#include <string.h>
 
-#include <curses.h>
-#include <term.h>
 
-#define QUIRK_SRGB_BLEND FALSE
+#define QUIRK_SRGB_BLEND TRUE
 
 #define SCREEN_SIZE (80 * 80)
 static void print_image(const char *filename, const struct palette *palette) {
@@ -92,11 +93,11 @@ static void print_image(const char *filename, const struct palette *palette) {
 				float weight_top = glyph->weights[0][0];
 				float weight_bot = glyph->weights[1][0];
 
-				gboolean srgb_blend = false;
+				gboolean srgb_blend = FALSE;
 				if (weight_top != 1.0 && weight_top != 0.0 &&
 						weight_bot != 1.0 && weight_bot != 0.0 &&
 						QUIRK_SRGB_BLEND) {
-					srgb_blend = true;
+					srgb_blend = TRUE;
 				}
 
 
@@ -205,32 +206,164 @@ static void print_image(const char *filename, const struct palette *palette) {
 	cmsDeleteTransform(trans);
 }
 
+G_DEFINE_AUTO_CLEANUP_FREE_FUNC(cmsHPROFILE, cmsCloseProfile, NULL)
+G_DEFINE_AUTO_CLEANUP_FREE_FUNC(cmsHTRANSFORM, cmsDeleteTransform, NULL)
+
 static void print_image_truecolor(const char *filename) {
 	FILE *f = fopen(filename, "rb");
-	uint8_t *buf = malloc(SCREEN_SIZE * 3);
 
-	size_t pixels = fread(buf, 3, SCREEN_SIZE, f);
-	size_t rows = pixels / 80;
-	unsigned row;
+	gsize columns = 160;
+	g_autofree guint8 *buf = g_new(guint8, columns * 80 * 3);
 
-	for (row = 0; row < rows-1; row += 2) {
-		for (unsigned i = 0; i < 80; i++) {
-			printf("\e[38;2;%u;%u;%um\e[48;2;%u;%u;%um\342\226\200",
-				(unsigned) buf[row*80*3+i*3],
-				(unsigned) buf[row*80*3+i*3+1],
-				(unsigned) buf[row*80*3+i*3+2],
-				(unsigned) buf[(row+1)*80*3+i*3],
-				(unsigned) buf[(row+1)*80*3+i*3+1],
-				(unsigned) buf[(row+1)*80*3+i*3+2]);
-		}
-		printf("\e[0m\n");
+	gsize pixels = fread(buf, sizeof(guint8) * 3, columns * 80, f);
+	gsize lines = pixels / columns;
+
+	/* icc profile for sRGB, standard sRGB gamma curve */
+	g_auto(cmsHPROFILE) hsRGB = cmsOpenProfileFromFile("sRGB-elle-V4-srgbtrc.icc", "r");
+	if (hsRGB == NULL) {
+		printf("Couldn't load sRGB icc profile\n");
+		return;
 	}
-	if (row < rows) {
-		for (unsigned i = 0; i < 80; i++) {
-			printf("\e[38;2;%u;%u;%um\342\226\200",
-				(unsigned) buf[row*80*3+i*3],
-				(unsigned) buf[row*80*3+i*3+1],
-				(unsigned) buf[row*80*3+i*3+2]);
+	/* icc profile for sRGB gamut linear gamma */
+	g_auto(cmsHPROFILE) hsRGBlin = cmsOpenProfileFromFile("sRGB-elle-V4-g10.icc", "r");
+	if (hsRGBlin == NULL) {
+		printf("Couldn't load sRGB linear icc profile\n");
+		return;
+	}
+
+	/* Forwards transform to working space */
+	g_auto(cmsHTRANSFORM) trans = cmsCreateTransform(
+			hsRGB, TYPE_RGB_8,
+			hsRGBlin, TYPE_RGB_FLT,
+			INTENT_PERCEPTUAL, 0);
+	/* Reverse transform back to display space */
+	g_auto(cmsHTRANSFORM) inv_trans = cmsCreateTransform(
+			hsRGBlin, TYPE_RGB_FLT,
+			hsRGB, TYPE_RGB_8,
+			INTENT_PERCEPTUAL, 0);
+	if (trans == NULL || inv_trans == NULL) {
+		printf("Couldn't build color-space transforms\n");
+		return;
+	}
+
+	g_autofree gfloat (*lin_buf)[columns][3] =
+		g_malloc(sizeof(gfloat[columns][3]) * lines);
+
+	cmsDoTransform(trans, buf, lin_buf, pixels);
+
+	enum charset_flags charset_flags = CHARSET_RES_HALF |
+		CHARSET_RES_QUARTER | CHARSET_UTF8_EXTENDED;
+	g_autoptr(charset) charset = charset_get_default(charset_flags);
+	if (!charset) {
+		printf("No charset!\n");
+		return;
+	}
+
+	size_t glyph_count = 0;
+	const struct glyph **glyphs = charset_get_glyphs(charset, &glyph_count);
+
+	for (gsize line = 0; line < lines; line += 2) {
+		for (gsize column = 0; column < columns; column += 2) {
+			gfloat block[2][2][3] = {
+				{ { 0, 0, 0 }, { 0, 0, 0 } },
+				{ { 0, 0, 0 }, { 0, 0, 0 } }
+			};
+
+			for (gsize l = 0; l < 2; l++) {
+				if (line + l >= lines)
+					continue;
+
+				for (gsize c = 0; c < 2; c++) {
+					if (column + c >= columns)
+						continue;
+
+					memcpy(&block[l][c],
+						&lin_buf[line + l][column + c],
+						sizeof (gfloat[3]));
+				}
+			}
+
+			gfloat block_fg[3] = { 0, 0, 0 };
+			gfloat block_bg[3] = { 0, 0, 0 };
+			const struct glyph *block_glyph = glyphs[0];
+			double block_err = HUGE_VAL;
+			gfloat block_out[2][2][3] = { 0 };
+
+			for (gsize g = 0; g < glyph_count; g++) {
+				const struct glyph *glyph = glyphs[g];
+				/* Calculate the fg/bg colors that this glyph
+				 * would use */
+				gfloat fg[3] = { 0, 0, 0 };
+				gfloat fg_weight = 0;
+				gfloat bg[3] = { 0, 0, 0 };
+				gfloat bg_weight = 0;
+				for (gsize l = 0; l < 2; l++) {
+					for (gsize c = 0; c < 2; c++) {
+						for (gsize i = 0; i < 3; i++) {
+							fg[i] += block[l][c][i] * glyph->weights[l][c];
+						}
+						fg_weight += glyph->weights[l][c];
+						for (gsize i = 0; i < 3; i++) {
+							bg[i] += block[l][c][i] * (1 - glyph->weights[l][c]);
+						}
+						bg_weight += (1 - glyph->weights[l][c]);
+					}
+				}
+				if (fg_weight > 0) {
+					for (gsize i = 0; i < 3; i++)
+						fg[i] /= fg_weight;
+				} else {
+					fg[0] = 0;
+					fg[1] = 0;
+					fg[2] = 0;
+				}
+				if (bg_weight > 0) {
+					for (gsize i = 0; i < 3; i++)
+						bg[i] /= bg_weight;
+				} else {
+					bg[0] = 0;
+					bg[1] = 0;
+					bg[2] = 0;
+				}
+				/* Calculate the error */
+				double err = 0;
+				gfloat out[2][2][3] = { 0 };
+				for (gsize l = 0; l < 2; l++) {
+					for (gsize c = 0; c < 2; c++) {
+						for (gsize i = 0; i < 3; i++) {
+							out[l][c][i] = 
+								fg[i] * glyph->weights[l][c] +
+								bg[i] * (1 - glyph->weights[l][c]);
+							double diff = block[l][c][i] - out[l][c][i];
+							err += diff * diff;
+						}
+					}
+				}
+				/* Use this glyph if it has better error */
+				if (err < block_err) {
+					memcpy(block_fg, fg, sizeof(gfloat[3]));
+					memcpy(block_bg, bg, sizeof(gfloat[3]));
+					memcpy(block_out, out, sizeof(gfloat[2][2][3]));
+					block_glyph = glyph;
+					block_err = err;
+				}
+			}
+
+			/* Convert the colors back to sRGB */
+			guint8 fg_srgb[3];
+			guint8 bg_srgb[3];
+			cmsDoTransform(inv_trans, block_fg, fg_srgb, 1);
+			cmsDoTransform(inv_trans, block_bg, bg_srgb, 1);
+
+			/* Print the glyph */
+			printf("\e[38;2;%u;%u;%um\e[48;2;%u;%u;%um%s",
+				(unsigned) fg_srgb[0],
+				(unsigned) fg_srgb[1],
+				(unsigned) fg_srgb[2],
+				(unsigned) bg_srgb[0],
+				(unsigned) bg_srgb[1],
+				(unsigned) bg_srgb[2],
+				block_glyph->code);
 		}
 		printf("\e[0m\n");
 	}
@@ -239,20 +372,9 @@ static void print_image_truecolor(const char *filename) {
 int main(int argc, char *argv[]) {
 	setlocale(LC_ALL, "");
 
-	int err = 0;
-	if (setupterm(NULL, 1, &err) == ERR) {
-		if (err == -1) {
-			printf("The terminfo database could not be found.\n");
-		}
-		if (err == 0) {
-			printf("You are using a generic or unknown setting for TERM,\n");
-		}
-		printf("You can try manually specifying an output mode.\n");
-		exit(1);
-	}
+	driver_term_init();
 
-
-	struct palette *palette = &palette_xterm;
+	struct palette *palette = &palette_solarized;
 
 	uint32_t fg_count = palette->fg_count;
 	uint32_t bg_count = palette->bg_count;
@@ -284,8 +406,8 @@ int main(int argc, char *argv[]) {
 	printf("\n");
 
 	if (argc > 1) {
-		//print_image_truecolor(argv[1]);
-		print_image(argv[1], palette);
+		print_image_truecolor(argv[1]);
+		//print_image(argv[1], palette);
 	}
 
 	return 0;

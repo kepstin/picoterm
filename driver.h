@@ -51,4 +51,7 @@ void driver_render(const struct driver *driver,
  * This can include commentary on suggested options, etc. */
 void driver_test(const struct driver *driver);
 
+/* Perform early-program initialization required for terminal drivers */
+void driver_term_init(void);
+
 #endif
