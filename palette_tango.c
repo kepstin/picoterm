@@ -2,7 +2,7 @@
 
 #define COUNT 16
 
-static const guint8 const palette[COUNT * 3] = {
+static const guint8 palette[COUNT * 3] = {
 	0x00, 0x00, 0x00,
 	0xcc, 0x00, 0x00,
 	0x4e, 0x9a, 0x06,

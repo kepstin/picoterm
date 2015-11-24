@@ -6,7 +6,7 @@
 
 /* The colors are nominally these Lab values, but in real life, terminals
  * use the exact RGB values instead. Kept for reference. */
-static const cmsCIELab const lab_palette[COUNT] = {
+static const cmsCIELab lab_palette[COUNT] = {
 	{ .L = 20, .a = -12, .b = -12 }, /* 0 - base03 */
 	{ .L = 50, .a =  65, .b =  45 }, /* 1 - red */
 	{ .L = 60, .a = -20, .b =  65 }, /* 2 - green */
@@ -25,7 +25,7 @@ static const cmsCIELab const lab_palette[COUNT] = {
 	{ .L = 97, .a =  0,  .b =  10 }, /* 15 - base3 */
 };
 
-static const guint8 const palette[COUNT * 3] = {
+static const guint8 palette[COUNT * 3] = {
 	0x07, 0x36, 0x42,
 	0xdc, 0x32, 0x2f,
 	0x85, 0x99, 0x00,

@@ -5,13 +5,13 @@
 
 /* The points used on the color cube */
 #define COLOR_COUNT 6
-static const guint8 const color[COLOR_COUNT] = {
+static const guint8 color[COLOR_COUNT] = {
 	0x00, 0x5f, 0x87, 0xaf, 0xd7, 0xff
 };
 
 /* The points used on the greyscale gradient */
 #define GREY_COUNT 24
-static const guint8 const grey[GREY_COUNT] = {
+static const guint8 grey[GREY_COUNT] = {
 	0x08, 0x12, 0x1c, 0x26, 0x30, 0x3a,
 	0x44, 0x4e, 0x58, 0x60, 0x66, 0x76,
 	0x80, 0x8a, 0x94, 0x9e, 0xa8, 0xb2,

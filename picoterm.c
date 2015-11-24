@@ -15,7 +15,7 @@
 #define QUIRK_SRGB_BLEND TRUE
 
 #define SCREEN_SIZE (80 * 80)
-static void print_image(const char *filename, const struct palette *palette) {
+void print_image(const char *filename, const struct palette *palette) {
 	FILE *f = fopen(filename, "rb");
 	uint8_t *buf = malloc(SCREEN_SIZE * 3);
 
@@ -208,9 +208,217 @@ static void print_image(const char *filename, const struct palette *palette) {
 
 G_DEFINE_AUTO_CLEANUP_FREE_FUNC(cmsHPROFILE, cmsCloseProfile, NULL)
 G_DEFINE_AUTO_CLEANUP_FREE_FUNC(cmsHTRANSFORM, cmsDeleteTransform, NULL)
+G_DEFINE_AUTOPTR_CLEANUP_FUNC(FILE, fclose)
 
-static void print_image_truecolor(const char *filename) {
-	FILE *f = fopen(filename, "rb");
+typedef float v4f __attribute__ ((vector_size (16)));
+
+void print_image_palette_quarter(const char *filename, const struct palette *palette) {
+	g_autoptr(FILE) f = fopen(filename, "rb");
+
+	gsize columns = 160;
+	g_autofree guint8 *buf = g_new(guint8, columns * 80 * 3);
+
+	gsize pixels = fread(buf, sizeof(guint8) * 3, columns * 80, f);
+	gsize lines = pixels / columns;
+
+	/* icc profile for sRGB, standard sRGB gamma curve */
+	g_auto(cmsHPROFILE) hsRGB = cmsOpenProfileFromFile("sRGB-elle-V4-srgbtrc.icc", "r");
+	if (hsRGB == NULL) {
+		printf("Couldn't load sRGB icc profile\n");
+		return;
+	}
+	/* icc profile for sRGB gamut linear gamma */
+	g_auto(cmsHPROFILE) hsRGBlin = cmsOpenProfileFromFile("sRGB-elle-V4-g10.icc", "r");
+	if (hsRGBlin == NULL) {
+		printf("Couldn't load sRGB linear icc profile\n");
+		return;
+	}
+
+	/* Forwards transform to working space */
+	g_auto(cmsHTRANSFORM) trans = cmsCreateTransform(
+			hsRGB, TYPE_RGB_8,
+			hsRGBlin, TYPE_RGBA_FLT,
+			INTENT_PERCEPTUAL, 0);
+	if (trans == NULL) {
+		printf("Couldn't build color-space transforms\n");
+		return;
+	}
+
+	g_autofree v4f (*lin_buf)[columns] =
+		g_malloc(sizeof(v4f[columns]) * lines);
+
+	cmsDoTransform(trans, buf, lin_buf, columns * lines);
+
+	enum charset_flags charset_flags = CHARSET_RES_HALF |
+		CHARSET_RES_QUARTER | CHARSET_SHADE | CHARSET_UTF8_EXTENDED;
+		//CHARSET_RES_QUARTER;
+	g_autoptr(charset) charset = charset_get_default(charset_flags);
+	if (!charset) {
+		printf("No charset!\n");
+		return;
+	}
+
+	size_t glyph_count = 0;
+	const struct glyph **glyphs = charset_get_glyphs(charset, &glyph_count);
+
+	uint16_t fg_count = palette->fg_count;
+	const guint8 *srgb_fg_palette = palette->fg_palette();
+	g_autofree v4f (*fg_palette) = g_malloc(sizeof(v4f) * fg_count);
+	cmsDoTransform(trans, srgb_fg_palette, fg_palette, fg_count);
+
+	uint16_t bg_count = palette->bg_count;
+	const guint8 *srgb_bg_palette = palette->bg_palette();
+	g_autofree v4f (*bg_palette) = g_malloc(sizeof(v4f) * bg_count);
+	cmsDoTransform(trans, srgb_bg_palette, bg_palette, bg_count);
+
+	g_autofree char *code = g_malloc(palette->escape_len);
+	const char *enter_string = charset_get_enter_string(charset);
+	const char *exit_string = charset_get_exit_string(charset);
+
+	v4f (**blend_srgb)[bg_count] = NULL;
+	if ((charset_get_flags(charset) & CHARSET_SHADE) && QUIRK_SRGB_BLEND) {
+		g_print("Precalculating sRGB shade LUT...\n");
+		/* The colorspace conversion is really slow, so to make
+		 * comparisons fast, generated precalculated blend color
+		 * tables */
+		blend_srgb = g_malloc0(sizeof(v4f *) * glyph_count);
+
+		for (gsize g = 0; g < glyph_count; g++) {
+			const struct glyph *glyph = glyphs[g];
+			/* For now, assume all blends are full-block */
+			gfloat weight = glyph->weights[0][0];
+			if (weight >= 1.0 || weight <= 0.0)
+				continue;
+
+			blend_srgb[g] = g_malloc(sizeof(v4f[bg_count]) * fg_count);
+			for (gsize fg = 0; fg < fg_count; fg++) {
+				for (gsize bg = 0; bg < bg_count; bg++) {
+					guint8 srgb_color[3];
+					/* For now, assume all blends are full-block */
+					for (size_t c = 0; c < 3; c++) {
+						srgb_color[c] =
+							(srgb_fg_palette[fg*3 + c] * glyph->weights[0][0]) +
+							(srgb_bg_palette[bg*3 + c] * (1 - glyph->weights[0][0]));
+					}
+					cmsDoTransform(trans, srgb_color,
+							&blend_srgb[g][fg][bg], 1);
+				}
+			}
+		}
+		g_print("Done!\n");
+	}
+
+	for (gsize line = 0; line < lines; line += 2) {
+		if (enter_string)
+			printf("%s", enter_string);
+		for (gsize column = 0; column < columns; column += 2) {
+			v4f block[2][2] = { { { 0 } } };
+			for (gsize l = 0; l < 2; l++) {
+				if (line + l >= lines)
+					continue;
+				for (gsize c = 0; c < 2; c++) {
+					if (column + c >= columns)
+						continue;
+					block[l][c] = lin_buf[line + l][column + c];
+				}
+			}
+
+			guint16 block_fg = fg_count;
+			guint16 block_bg = bg_count;
+			const struct glyph *block_glyph = glyphs[0];
+			gdouble block_diff_sq = HUGE_VAL;
+			v4f block_err[2][2] = { { { 0 } } };
+
+			for (gsize g = 0; g < glyph_count; g++) {
+				const struct glyph *glyph = glyphs[g];
+				/* Test the available palette colors */
+				for (gsize fg = 0; fg < fg_count; fg++) {
+					v4f fg_color = fg_palette[fg];
+					for (gsize bg = 0; bg < bg_count; bg++) {
+						v4f bg_color = bg_palette[bg];
+
+						v4f err[2][2] = { { { 0 } } };
+						double diff_sq = 0;
+						/* Go through the sub-blocks, calculating
+						 * their real color and error values */
+						for (gsize l = 0; l < 2; l++) {
+							for (gsize c = 0; c < 2; c++) {
+								v4f orig_color = block[l][c];
+								/* Apply dithering */
+								if (c > 0) {
+									orig_color += err[l][c - 1] / 2;
+								}
+								if (l > 0) {
+									if (c < 1) {
+										orig_color += err[l - 1][c + 1] / 4;
+										orig_color += err[l - 1][c] / 4;
+									} else {
+										orig_color += err[l - 1][c] / 2;
+									}
+								}
+
+								v4f color;
+								if (blend_srgb && blend_srgb[g]) {
+									color = blend_srgb[g][fg][bg];
+								} else {
+									color = fg_color * glyph->weights[l][c] +
+										bg_color * (1 - glyph->weights[l][c]);
+								}
+								err[l][c] = orig_color - color;
+								v4f err_sq = err[l][c] * err[l][c];
+								diff_sq += err_sq[0] + err_sq[1] + err_sq[2];
+							}
+						}
+
+						if (diff_sq < block_diff_sq) {
+							block_fg = fg;
+							block_bg = bg;
+							block_glyph = glyph;
+							block_diff_sq = diff_sq;
+							memcpy(block_err, err, sizeof(v4f[2][2]));
+						}
+					}
+				}
+			}
+
+			/* Apply the resulting dither errors */
+			if (column + 2 < columns) {
+				lin_buf[line][column + 2] += block_err[0][1] / 2;
+				if (line + 1 < lines) {
+					lin_buf[line + 1][column + 2] += block_err[1][1] / 2;
+				}
+			}
+			if (line + 2 < lines) {
+				if (column > 0) {
+					lin_buf[line + 2][column - 1] += block_err[1][0] / 4;
+					lin_buf[line + 2][column] += block_err[1][0] / 4;
+				} else {
+					lin_buf[line + 2][column] += block_err[1][0] / 2;
+				}
+				if (column + 1 < columns) {
+					lin_buf[line + 2][column] += block_err[1][1] / 4;
+					lin_buf[line + 2][column + 1] += block_err[1][1] / 4;
+				}
+			}
+
+			palette->code(code, block_fg, block_bg);
+			printf("%s%s", code, block_glyph->code);
+		}
+		if (exit_string)
+			printf("%s", exit_string);
+		palette->reset(code);
+		printf("%s\n", code);
+	}
+
+	if (blend_srgb) {
+		for (gsize g = 0; g < glyph_count; g++)
+			g_free(blend_srgb[g]);
+	}
+	g_free(blend_srgb);
+}
+
+void print_image_truecolor(const char *filename) {
+	g_autoptr(FILE) f = fopen(filename, "rb");
 
 	gsize columns = 160;
 	g_autofree guint8 *buf = g_new(guint8, columns * 80 * 3);
@@ -287,7 +495,7 @@ static void print_image_truecolor(const char *filename) {
 			gfloat block_bg[3] = { 0, 0, 0 };
 			const struct glyph *block_glyph = glyphs[0];
 			double block_err = HUGE_VAL;
-			gfloat block_out[2][2][3] = { 0 };
+			gfloat block_out[2][2][3] = {{{ 0 }}};
 
 			for (gsize g = 0; g < glyph_count; g++) {
 				const struct glyph *glyph = glyphs[g];
@@ -327,7 +535,7 @@ static void print_image_truecolor(const char *filename) {
 				}
 				/* Calculate the error */
 				double err = 0;
-				gfloat out[2][2][3] = { 0 };
+				gfloat out[2][2][3] = {{{ 0 }}};
 				for (gsize l = 0; l < 2; l++) {
 					for (gsize c = 0; c < 2; c++) {
 						for (gsize i = 0; i < 3; i++) {
@@ -374,7 +582,7 @@ int main(int argc, char *argv[]) {
 
 	driver_term_init();
 
-	struct palette *palette = &palette_solarized;
+	struct palette *palette = &palette_256color;
 
 	uint32_t fg_count = palette->fg_count;
 	uint32_t bg_count = palette->bg_count;
@@ -407,7 +615,8 @@ int main(int argc, char *argv[]) {
 
 	if (argc > 1) {
 		print_image_truecolor(argv[1]);
-		//print_image(argv[1], palette);
+		print_image(argv[1], palette);
+		print_image_palette_quarter(argv[1], palette);
 	}
 
 	return 0;

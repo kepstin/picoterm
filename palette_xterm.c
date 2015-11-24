@@ -3,7 +3,7 @@
 #define COUNT 16
 
 /* Post-2004 xterm */
-static const guint8 const palette[COUNT * 3] = {
+static const guint8 palette[COUNT * 3] = {
 	0x00, 0x00, 0x00,
 	0xCD, 0x00, 0x00,
 	0x00, 0xCD, 0x00,
