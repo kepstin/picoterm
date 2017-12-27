@@ -12,6 +12,8 @@
 #include <string.h>
 
 
+/* Set this to TRUE if you're using gnome-terminal (or any libvte terminal),
+ * or FALSE otherwise. The picture will look incorrect if it is set wrong. */
 #define QUIRK_SRGB_BLEND TRUE
 
 #define SCREEN_SIZE (80 * 80)
@@ -251,7 +253,6 @@ void print_image_palette_quarter(const char *filename, const struct palette *pal
 
 	enum charset_flags charset_flags = CHARSET_RES_HALF |
 		CHARSET_RES_QUARTER | CHARSET_SHADE | CHARSET_UTF8_EXTENDED;
-		//CHARSET_RES_QUARTER;
 	g_autoptr(charset) charset = charset_get_default(charset_flags);
 	if (!charset) {
 		printf("No charset!\n");
@@ -582,7 +583,7 @@ int main(int argc, char *argv[]) {
 
 	driver_term_init();
 
-	struct palette *palette = &palette_256color;
+	struct palette *palette = &palette_tango;
 
 	uint32_t fg_count = palette->fg_count;
 	uint32_t bg_count = palette->bg_count;
@@ -615,8 +616,8 @@ int main(int argc, char *argv[]) {
 
 	if (argc > 1) {
 		print_image_truecolor(argv[1]);
-		print_image(argv[1], palette);
-		print_image_palette_quarter(argv[1], palette);
+		//print_image(argv[1], palette);
+		//print_image_palette_quarter(argv[1], palette);
 	}
 
 	return 0;
